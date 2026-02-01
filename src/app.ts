@@ -21,6 +21,9 @@ import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
 
+// Trust proxy - important for Render, Railway, Heroku, etc.
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
@@ -57,6 +60,11 @@ if (config.NODE_ENV === 'development') {
 
 // Health check
 app.get('/health', (_, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Health check for API
+app.get('/api/health', (_, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
