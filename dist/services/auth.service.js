@@ -50,7 +50,7 @@ export class AuthService {
         });
         // Generate and send OTP
         const otp = generateOTP();
-        await redis.setex(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
+        await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
         await sendVerificationEmail(email, otp, fullName);
         // Generate tokens (limited access until verified)
         const accessToken = generateAccessToken({
@@ -63,7 +63,7 @@ export class AuthService {
             tokenVersion: 1,
         });
         // Store refresh token
-        await redis.setex(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, refreshToken);
+        await redis.setEx(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, refreshToken);
         return {
             user,
             accessToken,
@@ -131,7 +131,7 @@ export class AuthService {
         }
         // Generate and send new OTP
         const otp = generateOTP();
-        await redis.setex(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
+        await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
         await sendVerificationEmail(email, otp, user.fullName);
         return { message: 'Verification code sent to your email' };
     }
@@ -184,7 +184,7 @@ export class AuthService {
             tokenVersion: 1,
         });
         // Store refresh token
-        await redis.setex(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, refreshToken);
+        await redis.setEx(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, refreshToken);
         // Exclude sensitive fields
         const { passwordHash: _, ...userWithoutPassword } = user;
         return {
@@ -207,7 +207,7 @@ export class AuthService {
         if (expiration) {
             const ttl = expiration - Math.floor(Date.now() / 1000);
             if (ttl > 0) {
-                await redis.setex(REDIS_KEYS.BLACKLIST(token), ttl, '1');
+                await redis.setEx(REDIS_KEYS.BLACKLIST(token), ttl, '1');
             }
         }
         // Delete refresh token
@@ -255,7 +255,7 @@ export class AuthService {
             userId: user.id,
             tokenVersion: payload.tokenVersion + 1,
         });
-        await redis.setex(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, newRefreshToken);
+        await redis.setEx(REDIS_KEYS.REFRESH_TOKEN(user.id), REDIS_TTL.REFRESH_TOKEN, newRefreshToken);
         return {
             accessToken,
             refreshToken: newRefreshToken,
@@ -281,7 +281,7 @@ export class AuthService {
         }
         // Generate reset token
         const resetToken = generateToken();
-        await redis.setex(REDIS_KEYS.RESET_TOKEN(resetToken), REDIS_TTL.RESET_TOKEN, user.id);
+        await redis.setEx(REDIS_KEYS.RESET_TOKEN(resetToken), REDIS_TTL.RESET_TOKEN, user.id);
         // Send reset email
         await sendPasswordResetEmail(email, resetToken, user.fullName);
         return { message: 'If the email exists, a password reset link has been sent.' };

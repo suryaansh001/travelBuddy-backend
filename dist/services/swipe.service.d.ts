@@ -29,7 +29,7 @@ export declare class SwipeService {
                 id: string;
                 fullName: string;
                 profilePhotoUrl: string | null;
-                trustScore: import("@prisma/client/runtime/client").Decimal;
+                trustScore: import("@prisma/client-runtime-utils").Decimal;
                 college: string;
                 department: string | null;
                 yearOfStudy: number | null;

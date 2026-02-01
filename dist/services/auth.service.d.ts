@@ -11,7 +11,7 @@ export declare class AuthService {
             department: string | null;
             yearOfStudy: number | null;
             gender: string | null;
-            trustScore: import("@prisma/client/runtime/client").Decimal;
+            trustScore: import("@prisma/client-runtime-utils").Decimal;
             createdAt: Date;
         };
         accessToken: string;
@@ -52,7 +52,7 @@ export declare class AuthService {
             bio: string | null;
             gender: string | null;
             preferredGender: string | null;
-            trustScore: import("@prisma/client/runtime/client").Decimal;
+            trustScore: import("@prisma/client-runtime-utils").Decimal;
             totalTripsCompleted: number;
             totalTripsCancelled: number;
             isVerified: boolean;
@@ -98,7 +98,7 @@ export declare class AuthService {
         bio: string | null;
         gender: string | null;
         preferredGender: string | null;
-        trustScore: import("@prisma/client/runtime/client").Decimal;
+        trustScore: import("@prisma/client-runtime-utils").Decimal;
         totalTripsCompleted: number;
         totalTripsCancelled: number;
         isVerified: boolean;

@@ -4,7 +4,14 @@ import pg from 'pg';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/campusbuddy';
 
-const pool = new pg.Pool({ connectionString });
+// For Vercel/serverless: Use connection pooling with smaller pool size
+const pool = new pg.Pool({ 
+  connectionString,
+  max: 10, // Smaller pool for serverless
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
+
 const adapter = new PrismaPg(pool);
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
@@ -21,3 +28,10 @@ export const prisma =
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
+
+// Graceful shutdown for connection cleanup
+export async function disconnectDatabase() {
+  await prisma.$disconnect();
+  await pool.end();
+}
+

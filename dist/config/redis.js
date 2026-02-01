@@ -1,15 +1,41 @@
-import { Redis } from 'ioredis';
+import { createClient } from 'redis';
 import { config } from './env.js';
-export const redis = new Redis(config.REDIS_URL, {
-    maxRetriesPerRequest: 3,
-    lazyConnect: true,
-});
+// Parse Redis URL or use direct config
+let redisConfig;
+if (config.REDIS_URL) {
+    // If REDIS_URL is provided, use it
+    redisConfig = { url: config.REDIS_URL };
+}
+else {
+    // Otherwise use individual config (for Redis Labs)
+    redisConfig = {
+        username: process.env.REDIS_USERNAME || 'default',
+        password: process.env.REDIS_PASSWORD,
+        socket: {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379'),
+            connectTimeout: 10000,
+        },
+    };
+}
+export const redis = createClient(redisConfig);
 redis.on('error', (err) => {
-    console.error('Redis connection error:', err);
+    console.error('Redis Client Error:', err);
 });
 redis.on('connect', () => {
     console.log('Redis connected');
 });
+// Connect to Redis
+await redis.connect();
+// Graceful disconnect
+export async function disconnectRedis() {
+    try {
+        await redis.quit();
+    }
+    catch (err) {
+        console.error('Error disconnecting Redis:', err);
+    }
+}
 // Redis key prefixes for organization
 export const REDIS_KEYS = {
     OTP_EMAIL: (email) => `otp:email:${email}`,

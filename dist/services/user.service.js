@@ -413,7 +413,7 @@ export class UserService {
         }
         // Generate OTP
         const otp = generateOTP();
-        await redis.setex(REDIS_KEYS.OTP_PHONE(phoneNumber), REDIS_TTL.OTP, otp);
+        await redis.setEx(REDIS_KEYS.OTP_PHONE(phoneNumber), REDIS_TTL.OTP, otp);
         // In production, send via SMS service (Twilio/AWS SNS)
         // For now, log it
         console.log(`📱 Phone OTP for ${phoneNumber}: ${otp}`);

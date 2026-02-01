@@ -1,7 +1,7 @@
 import app from './app.js';
 import { config } from './config/env.js';
-import { prisma } from './config/database.js';
-import { redis } from './config/redis.js';
+import { prisma, disconnectDatabase } from './config/database.js';
+import { redis, disconnectRedis } from './config/redis.js';
 
 const PORT = config.PORT;
 
@@ -26,18 +26,21 @@ async function startServer() {
 }
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  await prisma.$disconnect();
-  await redis.quit();
+async function shutdown() {
+  console.log('Shutting down gracefully...');
+  await disconnectRedis();
+  await disconnectDatabase();
   process.exit(0);
-});
+}
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received. Shutting down gracefully...');
-  await prisma.$disconnect();
-  await redis.quit();
-  process.exit(0);
-});
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
-startServer();
+// For Vercel serverless: Export app for serverless function
+export default app;
+
+// Start server only if not in Vercel environment
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
+

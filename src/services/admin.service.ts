@@ -42,7 +42,7 @@ const logAdminAction = async (
   };
   
   // Store in Redis for real-time access
-  await redis.lpush('admin:logs', JSON.stringify(logEntry));
+  await redis.lPush('admin:logs', JSON.stringify(logEntry));
   await redis.ltrim('admin:logs', 0, 9999); // Keep last 10k logs
 };
 
@@ -489,7 +489,7 @@ export const getSystemLogs = async (
   const start = (page - 1) * limit;
   const end = start + limit;
   
-  const rawLogs = await redis.lrange('admin:logs', start, end);
+  const rawLogs = await redis.lRange('admin:logs', start, end) as string[];
   
   let logs: AdminLogEntry[] = rawLogs.map((log) => JSON.parse(log) as AdminLogEntry);
   
@@ -507,7 +507,7 @@ export const getSystemLogs = async (
     logs = logs.filter((l: AdminLogEntry) => l.targetId === userId || l.adminId === userId);
   }
   
-  const totalLogs = await redis.llen('admin:logs');
+  const totalLogs = await redis.lLen('admin:logs') as number;
   
   return {
     logs,
@@ -543,9 +543,9 @@ export const getCollegeWhitelist = async (
   const { search, isActive, page, limit } = params;
   
   // Get all colleges from Redis hash
-  const collegesRaw = await redis.hgetall('admin:college_whitelist');
+  const collegesRaw = await redis.hGetAll('admin:college_whitelist') as Record<string, string>;
   
-  let colleges = Object.entries(collegesRaw).map(([domain, data]) => ({
+  let colleges = Object.entries(collegesRaw || {}).map(([domain, data]) => ({
     collegeDomain: domain,
     ...(JSON.parse(data) as CollegeWhitelistEntry),
   }));
@@ -583,7 +583,7 @@ export const addCollegeToWhitelist = async (
   data: AddCollegeWhitelistInput
 ): Promise<{ success: boolean; college: { collegeDomain: string; collegeName: string; isActive: boolean } }> => {
   // Check if already exists
-  const existing = await redis.hget('admin:college_whitelist', data.collegeDomain);
+  const existing = await redis.hGet('admin:college_whitelist', data.collegeDomain);
   if (existing) {
     throw new Error('College domain already exists in whitelist');
   }
@@ -595,7 +595,7 @@ export const addCollegeToWhitelist = async (
     addedBy: adminId,
   };
   
-  await redis.hset('admin:college_whitelist', data.collegeDomain, JSON.stringify(collegeData));
+  await redis.hSet('admin:college_whitelist', data.collegeDomain, JSON.stringify(collegeData));
   
   await logAdminAction(adminId, 'add_college_whitelist', 'college', data.collegeDomain, {
     collegeName: data.collegeName,
@@ -616,7 +616,7 @@ export const updateCollegeWhitelist = async (
   collegeDomain: string,
   data: UpdateCollegeWhitelistInput
 ): Promise<{ success: boolean; college: { collegeDomain: string; collegeName: string; isActive: boolean } }> => {
-  const existing = await redis.hget('admin:college_whitelist', collegeDomain);
+  const existing = await redis.hGet('admin:college_whitelist', collegeDomain) as string | null;
   if (!existing) {
     throw new Error('College not found in whitelist');
   }
@@ -630,7 +630,7 @@ export const updateCollegeWhitelist = async (
     collegeData.isActive = data.isActive;
   }
   
-  await redis.hset('admin:college_whitelist', collegeDomain, JSON.stringify(collegeData));
+  await redis.hSet('admin:college_whitelist', collegeDomain, JSON.stringify(collegeData));
   
   await logAdminAction(adminId, 'update_college_whitelist', 'college', collegeDomain, data);
   
@@ -648,12 +648,12 @@ export const removeCollegeFromWhitelist = async (
   adminId: string,
   collegeDomain: string
 ): Promise<{ success: boolean }> => {
-  const existing = await redis.hget('admin:college_whitelist', collegeDomain);
+  const existing = await redis.hGet('admin:college_whitelist', collegeDomain);
   if (!existing) {
     throw new Error('College not found in whitelist');
   }
   
-  await redis.hdel('admin:college_whitelist', collegeDomain);
+  await redis.hDel('admin:college_whitelist', collegeDomain);
   
   await logAdminAction(adminId, 'remove_college_whitelist', 'college', collegeDomain);
   

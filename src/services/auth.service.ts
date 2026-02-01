@@ -58,7 +58,7 @@ export class AuthService {
 
     // Generate and send OTP
     const otp = generateOTP();
-    await redis.setex(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
+    await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
     await sendVerificationEmail(email, otp, fullName);
 
     // Generate tokens (limited access until verified)
@@ -74,7 +74,7 @@ export class AuthService {
     });
 
     // Store refresh token
-    await redis.setex(
+    await redis.setEx(
       REDIS_KEYS.REFRESH_TOKEN(user.id),
       REDIS_TTL.REFRESH_TOKEN,
       refreshToken
@@ -161,7 +161,7 @@ export class AuthService {
 
     // Generate and send new OTP
     const otp = generateOTP();
-    await redis.setex(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
+    await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
     await sendVerificationEmail(email, otp, user.fullName);
 
     return { message: 'Verification code sent to your email' };
@@ -230,7 +230,7 @@ export class AuthService {
     });
 
     // Store refresh token
-    await redis.setex(
+    await redis.setEx(
       REDIS_KEYS.REFRESH_TOKEN(user.id),
       REDIS_TTL.REFRESH_TOKEN,
       refreshToken
@@ -261,7 +261,7 @@ export class AuthService {
     if (expiration) {
       const ttl = expiration - Math.floor(Date.now() / 1000);
       if (ttl > 0) {
-        await redis.setex(REDIS_KEYS.BLACKLIST(token), ttl, '1');
+        await redis.setEx(REDIS_KEYS.BLACKLIST(token), ttl, '1');
       }
     }
 
@@ -317,7 +317,7 @@ export class AuthService {
       tokenVersion: payload.tokenVersion + 1,
     });
 
-    await redis.setex(
+    await redis.setEx(
       REDIS_KEYS.REFRESH_TOKEN(user.id),
       REDIS_TTL.REFRESH_TOKEN,
       newRefreshToken
@@ -352,7 +352,7 @@ export class AuthService {
 
     // Generate reset token
     const resetToken = generateToken();
-    await redis.setex(REDIS_KEYS.RESET_TOKEN(resetToken), REDIS_TTL.RESET_TOKEN, user.id);
+    await redis.setEx(REDIS_KEYS.RESET_TOKEN(resetToken), REDIS_TTL.RESET_TOKEN, user.id);
 
     // Send reset email
     await sendPasswordResetEmail(email, resetToken, user.fullName);

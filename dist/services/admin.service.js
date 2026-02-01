@@ -11,7 +11,7 @@ const logAdminAction = async (adminId, action, targetType, targetId, details) =>
         timestamp: new Date().toISOString(),
     };
     // Store in Redis for real-time access
-    await redis.lpush('admin:logs', JSON.stringify(logEntry));
+    await redis.lPush('admin:logs', JSON.stringify(logEntry));
     await redis.ltrim('admin:logs', 0, 9999); // Keep last 10k logs
 };
 // 10.2 Moderate User
@@ -357,7 +357,7 @@ export const getSystemLogs = async (params) => {
     // Get logs from Redis
     const start = (page - 1) * limit;
     const end = start + limit;
-    const rawLogs = await redis.lrange('admin:logs', start, end);
+    const rawLogs = await redis.lRange('admin:logs', start, end);
     let logs = rawLogs.map((log) => JSON.parse(log));
     // Filter by criteria
     if (startDate) {
@@ -372,7 +372,7 @@ export const getSystemLogs = async (params) => {
     if (userId) {
         logs = logs.filter((l) => l.targetId === userId || l.adminId === userId);
     }
-    const totalLogs = await redis.llen('admin:logs');
+    const totalLogs = await redis.lLen('admin:logs');
     return {
         logs,
         pagination: {
@@ -387,8 +387,8 @@ export const getSystemLogs = async (params) => {
 export const getCollegeWhitelist = async (params) => {
     const { search, isActive, page, limit } = params;
     // Get all colleges from Redis hash
-    const collegesRaw = await redis.hgetall('admin:college_whitelist');
-    let colleges = Object.entries(collegesRaw).map(([domain, data]) => ({
+    const collegesRaw = await redis.hGetAll('admin:college_whitelist');
+    let colleges = Object.entries(collegesRaw || {}).map(([domain, data]) => ({
         collegeDomain: domain,
         ...JSON.parse(data),
     }));
@@ -416,7 +416,7 @@ export const getCollegeWhitelist = async (params) => {
 };
 export const addCollegeToWhitelist = async (adminId, data) => {
     // Check if already exists
-    const existing = await redis.hget('admin:college_whitelist', data.collegeDomain);
+    const existing = await redis.hGet('admin:college_whitelist', data.collegeDomain);
     if (existing) {
         throw new Error('College domain already exists in whitelist');
     }
@@ -426,7 +426,7 @@ export const addCollegeToWhitelist = async (adminId, data) => {
         addedAt: new Date().toISOString(),
         addedBy: adminId,
     };
-    await redis.hset('admin:college_whitelist', data.collegeDomain, JSON.stringify(collegeData));
+    await redis.hSet('admin:college_whitelist', data.collegeDomain, JSON.stringify(collegeData));
     await logAdminAction(adminId, 'add_college_whitelist', 'college', data.collegeDomain, {
         collegeName: data.collegeName,
     });
@@ -440,7 +440,7 @@ export const addCollegeToWhitelist = async (adminId, data) => {
     };
 };
 export const updateCollegeWhitelist = async (adminId, collegeDomain, data) => {
-    const existing = await redis.hget('admin:college_whitelist', collegeDomain);
+    const existing = await redis.hGet('admin:college_whitelist', collegeDomain);
     if (!existing) {
         throw new Error('College not found in whitelist');
     }
@@ -451,7 +451,7 @@ export const updateCollegeWhitelist = async (adminId, collegeDomain, data) => {
     if (data.isActive !== undefined) {
         collegeData.isActive = data.isActive;
     }
-    await redis.hset('admin:college_whitelist', collegeDomain, JSON.stringify(collegeData));
+    await redis.hSet('admin:college_whitelist', collegeDomain, JSON.stringify(collegeData));
     await logAdminAction(adminId, 'update_college_whitelist', 'college', collegeDomain, data);
     return {
         success: true,
@@ -463,11 +463,11 @@ export const updateCollegeWhitelist = async (adminId, collegeDomain, data) => {
     };
 };
 export const removeCollegeFromWhitelist = async (adminId, collegeDomain) => {
-    const existing = await redis.hget('admin:college_whitelist', collegeDomain);
+    const existing = await redis.hGet('admin:college_whitelist', collegeDomain);
     if (!existing) {
         throw new Error('College not found in whitelist');
     }
-    await redis.hdel('admin:college_whitelist', collegeDomain);
+    await redis.hDel('admin:college_whitelist', collegeDomain);
     await logAdminAction(adminId, 'remove_college_whitelist', 'college', collegeDomain);
     return { success: true };
 };

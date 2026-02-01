@@ -24,7 +24,7 @@ export const trackEvent = async (
   };
   
   // Store in Redis list for batch processing
-  await redis.lpush('analytics:events', JSON.stringify(event));
+  await redis.lPush('analytics:events', JSON.stringify(event));
   
   // Also update real-time counters
   const today = new Date().toISOString().split('T')[0];

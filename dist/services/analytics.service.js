@@ -10,7 +10,7 @@ export const trackEvent = async (userId, data) => {
         timestamp: new Date().toISOString(),
     };
     // Store in Redis list for batch processing
-    await redis.lpush('analytics:events', JSON.stringify(event));
+    await redis.lPush('analytics:events', JSON.stringify(event));
     // Also update real-time counters
     const today = new Date().toISOString().split('T')[0];
     await redis.hincrby(`analytics:daily:${today}`, data.eventType, 1);
