@@ -54,7 +54,7 @@ export declare class MatchService {
                 id: string;
                 fullName: string;
                 profilePhotoUrl: string | null;
-                trustScore: import("@prisma/client-runtime-utils").Decimal;
+                trustScore: import("@prisma/client/runtime/client").Decimal;
             };
             chatRoomId: string | null;
         }[];
@@ -100,7 +100,7 @@ export declare class MatchService {
             profilePhotoUrl: string | null;
             collegeName: string;
             department: string | null;
-            trustScore: import("@prisma/client-runtime-utils").Decimal;
+            trustScore: import("@prisma/client/runtime/client").Decimal;
         };
         participant: {
             id: string;
@@ -108,7 +108,7 @@ export declare class MatchService {
             profilePhotoUrl: string | null;
             collegeName: string;
             department: string | null;
-            trustScore: import("@prisma/client-runtime-utils").Decimal;
+            trustScore: import("@prisma/client/runtime/client").Decimal;
         };
         chatRoomId: string | null;
     }>;

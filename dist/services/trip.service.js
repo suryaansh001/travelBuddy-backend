@@ -170,7 +170,7 @@ export class TripService {
         const swipedTripIds = new Set(swipedTrips.map(s => s.tripId));
         // Build where clause
         const where = {
-            status: 'open',
+            status: filters.status || 'open',
             isActive: true,
             createdBy: { not: userId },
             availableSeats: { gte: filters.minSeats || 1 },
@@ -213,9 +213,14 @@ export class TripService {
             const tags = filters.vibeTags.split(',').map(t => t.trim().toLowerCase());
             where.vibeTags = { hasSome: tags };
         }
-        // Gender preference matching
-        if (user?.gender && filters.genderPreference !== 'any') {
+        // Gender preference matching - include trips that:
+        // 1. Have no gender preference (null)
+        // 2. Have 'any' gender preference
+        // 3. Match the user's gender
+        // 4. Have 'same' preference and creator is same gender as user
+        if (user?.gender) {
             where.OR = [
+                { genderPreference: null },
                 { genderPreference: 'any' },
                 { genderPreference: user.gender },
                 { genderPreference: 'same', creator: { gender: user.gender } },
@@ -737,6 +742,11 @@ export class TripService {
     }
     // Helper: Format trip for response
     formatTrip(trip) {
+        // Convert creator's trustScore from Decimal to number
+        const creator = trip.creator ? {
+            ...trip.creator,
+            trustScore: trip.creator.trustScore ? Number(trip.creator.trustScore) : null,
+        } : null;
         return {
             id: trip.id,
             type: trip.type,
@@ -779,7 +789,7 @@ export class TripService {
             },
             viewCount: trip.viewCount,
             swipeCount: trip.swipeCount,
-            creator: trip.creator,
+            creator,
             createdAt: trip.createdAt,
             updatedAt: trip.updatedAt,
         };

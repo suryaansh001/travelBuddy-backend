@@ -1,4 +1,4 @@
-import type { SwipeDirection } from '@prisma/client';
+type SwipeDirection = 'left' | 'right' | 'super';
 export declare class SwipeService {
     swipeOnTrip(userId: string, tripId: string, direction: SwipeDirection, introductionMessage?: string): Promise<{
         swipe: {
@@ -29,7 +29,7 @@ export declare class SwipeService {
                 id: string;
                 fullName: string;
                 profilePhotoUrl: string | null;
-                trustScore: import("@prisma/client-runtime-utils").Decimal;
+                trustScore: import("@prisma/client/runtime/client").Decimal;
                 college: string;
                 department: string | null;
                 yearOfStudy: number | null;
@@ -94,10 +94,10 @@ export declare class SwipeService {
                 };
                 farePerPerson: number | null;
                 creator: {
+                    trustScore: number | null;
                     id: string;
                     fullName: string;
                     profilePhotoUrl: string | null;
-                    trustScore: import("@prisma/client-runtime-utils").Decimal;
                 };
             };
             matchStatus: {
@@ -130,7 +130,7 @@ export declare class SwipeService {
         isMutualMatch: boolean;
         matchStatus: import("@prisma/client").$Enums.MatchStatus | null;
         matchId: string | null;
-        chatRoomId: string | null;
+        chatRoomId: any;
     }>;
     getSwipeSummary(tripId: string): Promise<{
         right: number;
@@ -141,4 +141,5 @@ export declare class SwipeService {
     }>;
 }
 export declare const swipeService: SwipeService;
+export {};
 //# sourceMappingURL=swipe.service.d.ts.map

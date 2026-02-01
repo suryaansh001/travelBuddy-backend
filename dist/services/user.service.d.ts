@@ -20,7 +20,7 @@ export declare class UserService {
         bio: string | null;
         gender: string | null;
         preferredGender: string | null;
-        trustScore: import("@prisma/client-runtime-utils").Decimal;
+        trustScore: import("@prisma/client/runtime/client").Decimal;
         totalTripsCompleted: number;
         totalTripsCancelled: number;
         isVerified: boolean;
@@ -53,13 +53,13 @@ export declare class UserService {
         yearOfStudy: number | null;
         bio: string | null;
         gender: string | null;
-        trustScore: import("@prisma/client-runtime-utils").Decimal;
+        trustScore: import("@prisma/client/runtime/client").Decimal;
         isVerified: boolean;
         createdAt: Date;
         reviewsReceived: {
             id: string;
             createdAt: Date;
-            overallRating: import("@prisma/client-runtime-utils").Decimal;
+            overallRating: import("@prisma/client/runtime/client").Decimal;
             positiveTags: string[];
             comment: string | null;
             reviewer: {
@@ -108,7 +108,7 @@ export declare class UserService {
         message: string;
     }>;
     getUserStatistics(userId: string): Promise<{
-        trustScore: import("@prisma/client-runtime-utils").Decimal;
+        trustScore: import("@prisma/client/runtime/client").Decimal;
         totalTripsCompleted: number;
         totalTripsCancelled: number;
         totalTripsCreated: number;

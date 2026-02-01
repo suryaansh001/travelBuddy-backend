@@ -29,7 +29,9 @@ export const validate = (schema) => {
 export const validateQuery = (schema) => {
     return async (req, _res, next) => {
         try {
-            req.query = await schema.parseAsync(req.query);
+            const parsed = await schema.parseAsync(req.query);
+            // Store parsed query in a custom property since req.query is read-only
+            req.validatedQuery = parsed;
             next();
         }
         catch (error) {

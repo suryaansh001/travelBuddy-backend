@@ -1,6 +1,8 @@
 import { prisma } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
-import type { SwipeDirection } from '@prisma/client';
+
+// Define SwipeDirection locally since it's not exported from Prisma
+type SwipeDirection = 'left' | 'right' | 'super';
 
 export class SwipeService {
   // 4.1 Swipe on Trip
@@ -536,7 +538,7 @@ export class SwipeService {
     });
 
     // Get chat room if match exists
-    let chatRoomId = null;
+    let chatRoomId: any = null;
     if (match) {
       const chatRoom = await prisma.chatRoom.findUnique({
         where: { tripId },

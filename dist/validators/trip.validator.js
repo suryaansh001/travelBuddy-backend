@@ -83,6 +83,7 @@ export const updateTripSchema = z.object({
 });
 // Search Trips Schema
 export const searchTripsSchema = z.object({
+    status: z.enum(TRIP_STATUSES).optional(),
     originCity: z.string().optional(),
     destinationCity: z.string().optional(),
     departureDate: z.string().optional(),

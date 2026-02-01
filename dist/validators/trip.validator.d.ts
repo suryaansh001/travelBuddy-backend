@@ -54,6 +54,12 @@ export declare const updateTripSchema: z.ZodObject<{
 }, z.core.$strip>;
 export type UpdateTripInput = z.infer<typeof updateTripSchema>;
 export declare const searchTripsSchema: z.ZodObject<{
+    status: z.ZodOptional<z.ZodEnum<{
+        open: "open";
+        in_progress: "in_progress";
+        completed: "completed";
+        cancelled: "cancelled";
+    }>>;
     originCity: z.ZodOptional<z.ZodString>;
     destinationCity: z.ZodOptional<z.ZodString>;
     departureDate: z.ZodOptional<z.ZodString>;

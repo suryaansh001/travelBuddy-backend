@@ -24,7 +24,8 @@ export class TripController {
     }
     // 3.3 Search/Discover Trips
     async searchTrips(req, res) {
-        const result = await tripService.searchTrips(req.user.id, req.query);
+        const filters = req.validatedQuery || req.query;
+        const result = await tripService.searchTrips(req.user.id, filters);
         res.json({
             success: true,
             data: result.trips,
@@ -33,7 +34,8 @@ export class TripController {
     }
     // 3.4 Get Nearby Trips
     async getNearbyTrips(req, res) {
-        const result = await tripService.getNearbyTrips(req.user.id, req.query);
+        const filters = req.validatedQuery || req.query;
+        const result = await tripService.getNearbyTrips(req.user.id, filters);
         res.json({
             success: true,
             data: result.trips,

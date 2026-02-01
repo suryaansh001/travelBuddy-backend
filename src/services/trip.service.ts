@@ -8,7 +8,7 @@ import type {
   CancelTripInput,
   MyTripsQueryInput,
 } from '../validators/trip.validator.js';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 export class TripService {
   // 3.1 Create Trip
@@ -141,7 +141,7 @@ export class TripService {
     }
 
     // Check if user already swiped
-    let userSwiped = null;
+    let userSwiped: any = null;
     let isParticipant = false;
     
     if (userId) {
@@ -165,7 +165,7 @@ export class TripService {
     });
 
     // Get participants if user is creator or participant
-    let participants = null;
+    let participants: any = null;
     if (userId && (userId === trip.createdBy || isParticipant)) {
       participants = await this.getTripParticipants(tripId);
     }

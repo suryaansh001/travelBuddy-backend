@@ -1,5 +1,5 @@
 import type { CreateTripInput, UpdateTripInput, SearchTripsInput, NearbyTripsInput, CancelTripInput, MyTripsQueryInput } from '../validators/trip.validator.js';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 export declare class TripService {
     createTrip(userId: string, data: CreateTripInput): Promise<{
         id: any;
@@ -50,28 +50,10 @@ export declare class TripService {
     getTripDetails(tripId: string, userId?: string): Promise<{
         totalSwipes: number;
         confirmedParticipants: number;
-        userSwiped: import("@prisma/client").$Enums.SwipeDirection | null;
+        userSwiped: any;
         isParticipant: boolean;
         isCreator: boolean;
-        participants: ({
-            role: string;
-            seatsConfirmed: number;
-            joinedAt: Date | null;
-            id: string;
-            fullName: string;
-            profilePhotoUrl: string | null;
-            trustScore: Prisma.Decimal;
-            isVerified: boolean;
-        } | {
-            role: string;
-            seatsConfirmed: null;
-            joinedAt: null;
-            id?: string | undefined;
-            fullName?: string | undefined;
-            profilePhotoUrl?: string | null | undefined;
-            trustScore?: Prisma.Decimal | undefined;
-            isVerified?: boolean | undefined;
-        })[] | null;
+        participants: any;
         id: any;
         type: any;
         status: any;

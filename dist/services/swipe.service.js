@@ -398,7 +398,10 @@ export class SwipeService {
                         available: swipe.trip.availableSeats,
                     },
                     farePerPerson: swipe.trip.farePerPerson ? Number(swipe.trip.farePerPerson) : null,
-                    creator: swipe.trip.creator,
+                    creator: {
+                        ...swipe.trip.creator,
+                        trustScore: swipe.trip.creator.trustScore ? Number(swipe.trip.creator.trustScore) : null,
+                    },
                 },
                 matchStatus: match ? {
                     matched: true,
