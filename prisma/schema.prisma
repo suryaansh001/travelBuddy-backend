@@ -1,0 +1,430 @@
+// schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum TripType {
+  travel_buddy
+  cab_pool
+}
+
+enum TripStatus {
+  open
+  in_progress
+  completed
+  cancelled
+}
+
+enum SwipeDirection {
+  right
+  left
+  super
+}
+
+enum MatchStatus {
+  pending
+  accepted
+  rejected
+  cancelled
+}
+
+enum ReviewType {
+  companion
+  trip
+}
+
+enum ReportType {
+  user
+  trip
+  chat_message
+}
+
+enum ReportStatus {
+  pending
+  investigating
+  resolved
+  dismissed
+}
+
+enum NotificationType {
+  swipe_received
+  match_confirmed
+  trip_update
+  trip_cancelled
+  chat_message
+  review_reminder
+  payment_reminder
+  safety_alert
+}
+
+// ============================================================================
+// CORE MODELS
+// ============================================================================
+
+model User {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String   @unique @db.VarChar(255)
+  emailVerified Boolean  @default(false) @map("email_verified")
+  passwordHash  String   @map("password_hash") @db.VarChar(255)
+
+  // Profile
+  fullName         String  @map("full_name") @db.VarChar(100)
+  profilePhotoUrl  String? @map("profile_photo_url") @db.Text
+  collegeName      String  @map("college_name") @db.VarChar(255)
+  collegeDomain    String  @map("college_domain") @db.VarChar(100)
+  department       String? @db.VarChar(100)
+  yearOfStudy      Int?    @map("year_of_study") @db.Integer
+  phoneNumber      String? @map("phone_number") @db.VarChar(15)
+  phoneVerified    Boolean @default(false) @map("phone_verified")
+
+  // Preferences
+  bio              String? @db.Text
+  gender           String? @db.VarChar(20)
+  preferredGender  String? @map("preferred_gender") @db.VarChar(20)
+
+  // Trust & Safety (raw counts only)
+  trustScore            Decimal @default(5.0) @map("trust_score") @db.Decimal(2, 1)
+  totalTripsCompleted   Int     @default(0) @map("total_trips_completed") @db.Integer
+  totalTripsCancelled   Int     @default(0) @map("total_trips_cancelled") @db.Integer
+
+  // Status
+  isVerified Boolean @default(false) @map("is_verified")
+  isBlocked  Boolean @default(false) @map("is_blocked")
+  isActive   Boolean @default(true) @map("is_active")
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamp(6)
+
+  // Relations
+  interests         UserInterest[]
+  createdTrips      Trip[]              @relation("TripCreator")
+  swipes            Swipe[]
+  matchesAsCreator  Match[]             @relation("MatchCreator")
+  matchesAsUser     Match[]             @relation("MatchedUser")
+  sentMessages      ChatMessage[]
+  reviewsGiven      Review[]            @relation("Reviewer")
+  reviewsReceived   Review[]            @relation("ReviewedUser")
+  reportsSubmitted  SafetyReport[]      @relation("Reporter")
+  reportsAgainst    SafetyReport[]      @relation("ReportedUser")
+  notifications     Notification[]
+  blockedUsers      UserBlock[]         @relation("Blocker")
+  blockedBy         UserBlock[]         @relation("Blocked")
+  emergencyContacts EmergencyContact[]
+
+  @@index([email])
+  @@index([collegeDomain], name: "idx_users_college")
+  @@index([trustScore(sort: Desc)], name: "idx_users_trust_score")
+  @@index([isActive], name: "idx_users_active")
+  @@map("users")
+}
+
+model UserInterest {
+  userId    String   @map("user_id") @db.Uuid
+  interest  String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interest])
+  @@index([interest], name: "idx_user_interests_interest")
+  @@map("user_interests")
+}
+
+model Trip {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdBy String     @map("created_by") @db.Uuid
+  type      TripType
+  status    TripStatus @default(open)
+
+  // Location
+  originCity    String   @map("origin_city") @db.VarChar(100)
+  originLat     Decimal? @map("origin_lat") @db.Decimal(10, 8)
+  originLng     Decimal? @map("origin_lng") @db.Decimal(11, 8)
+  originAddress String?  @map("origin_address") @db.Text
+
+  destinationCity    String   @map("destination_city") @db.VarChar(100)
+  destinationLat     Decimal? @map("destination_lat") @db.Decimal(10, 8)
+  destinationLng     Decimal? @map("destination_lng") @db.Decimal(11, 8)
+  destinationAddress String?  @map("destination_address") @db.Text
+
+  // Timing
+  departureDate       DateTime @map("departure_date") @db.Date
+  departureTime       DateTime @map("departure_time") @db.Time(6)
+  departureTimeWindow Int?     @map("departure_time_window") @db.Integer // minutes
+  estimatedDuration   Int?     @map("estimated_duration") @db.Integer // minutes
+
+  // Capacity
+  totalSeats     Int @map("total_seats") @db.Integer
+  availableSeats Int @map("available_seats") @db.Integer
+
+  // Details
+  title       String?  @db.VarChar(200)
+  description String?  @db.Text
+  vibeTags    String[] @map("vibe_tags") @db.Text
+
+  // Cab Pool Specific
+  estimatedFare  Decimal? @map("estimated_fare") @db.Decimal(10, 2)
+  farePerPerson  Decimal? @map("fare_per_person") @db.Decimal(10, 2)
+  luggageSpace   Boolean  @default(true) @map("luggage_space")
+
+  // Filters
+  genderPreference   String?  @map("gender_preference") @db.VarChar(20)
+  sameDepartmentOnly Boolean  @default(false) @map("same_department_only")
+  sameYearOnly       Boolean  @default(false) @map("same_year_only")
+  verifiedUsersOnly  Boolean  @default(true) @map("verified_users_only")
+
+  // Metadata
+  viewCount  Int     @default(0) @map("view_count") @db.Integer
+  swipeCount Int     @default(0) @map("swipe_count") @db.Integer
+  isActive   Boolean @default(true) @map("is_active")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  creator      User           @relation("TripCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  swipes       Swipe[]
+  matches      Match[]
+  chatRoom     ChatRoom?
+  reviews      Review[]
+  safetyReports SafetyReport[]
+
+  @@index([createdBy], name: "idx_trips_creator")
+  @@index([status], name: "idx_trips_status")
+  @@index([type], name: "idx_trips_type")
+  @@index([departureDate, departureTime], name: "idx_trips_departure")
+  @@index([originCity, destinationCity], name: "idx_trips_cities")
+  @@index([isActive, status, departureDate], name: "idx_trips_active")
+  @@map("trips")
+}
+
+model Swipe {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId    String         @map("trip_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  direction SwipeDirection
+
+  introductionMessage String?  @map("introduction_message") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId], name: "idx_swipes_trip")
+  @@index([userId], name: "idx_swipes_user")
+  @@index([direction], name: "idx_swipes_direction")
+  @@map("swipes")
+}
+
+model Match {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId          String      @map("trip_id") @db.Uuid
+  tripCreatorId   String      @map("trip_creator_id") @db.Uuid
+  matchedUserId   String      @map("matched_user_id") @db.Uuid
+  status          MatchStatus @default(pending)
+
+  // Seats
+  seatsRequested Int @default(1) @map("seats_requested") @db.Integer
+  seatsConfirmed Int @default(0) @map("seats_confirmed") @db.Integer
+
+  // Payment
+  fareShare        Decimal? @map("fare_share") @db.Decimal(10, 2)
+  paymentStatus    String?  @default("pending") @map("payment_status") @db.VarChar(20)
+  paymentProofUrl  String?  @map("payment_proof_url") @db.Text
+
+  // Timestamps
+  matchedAt          DateTime  @default(now()) @map("matched_at") @db.Timestamp(6)
+  acceptedAt         DateTime? @map("accepted_at") @db.Timestamp(6)
+  rejectedAt         DateTime? @map("rejected_at") @db.Timestamp(6)
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamp(6)
+  cancellationReason String?   @map("cancellation_reason") @db.Text
+
+  trip        Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripCreator User @relation("MatchCreator", fields: [tripCreatorId], references: [id])
+  matchedUser User @relation("MatchedUser", fields: [matchedUserId], references: [id])
+
+  @@unique([tripId, matchedUserId])
+  @@index([tripId], name: "idx_matches_trip")
+  @@index([matchedUserId], name: "idx_matches_user")
+  @@index([tripCreatorId], name: "idx_matches_creator")
+  @@index([status], name: "idx_matches_status")
+  @@index([tripId, status], name: "idx_matches_pending")
+  @@map("matches")
+}
+
+model ChatRoom {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId     String   @unique @map("trip_id") @db.Uuid
+  isActive   Boolean  @default(true) @map("is_active")
+  archivedAt DateTime? @map("archived_at") @db.Timestamp(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  trip     Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([tripId], name: "idx_chatrooms_trip")
+  @@index([isActive], name: "idx_chatrooms_active")
+  @@map("chat_rooms")
+}
+
+model ChatMessage {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roomId      String  @map("room_id") @db.Uuid
+  senderId    String  @map("sender_id") @db.Uuid
+  messageType String  @map("message_type") @db.VarChar(20)
+  payload     Json    @db.JsonB
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  isFlagged Boolean  @default(false) @map("is_flagged")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User     @relation(fields: [senderId], references: [id])
+
+  @@index([roomId, createdAt(sort: Desc)], name: "idx_chat_room_time")
+  @@index([senderId], name: "idx_chat_sender")
+  @@index([isFlagged], name: "idx_chat_flagged")
+  @@map("chat_messages")
+}
+
+model Review {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId         String     @map("trip_id") @db.Uuid
+  reviewerId     String     @map("reviewer_id") @db.Uuid
+  reviewedUserId String?    @map("reviewed_user_id") @db.Uuid
+  type           ReviewType
+
+  // Ratings
+  overallRating        Decimal  @map("overall_rating") @db.Decimal(2, 1)
+  punctualityRating    Decimal? @map("punctuality_rating") @db.Decimal(2, 1)
+  planningRating       Decimal? @map("planning_rating") @db.Decimal(2, 1)
+  costFairnessRating   Decimal? @map("cost_fairness_rating") @db.Decimal(2, 1)
+  coordinationRating   Decimal? @map("coordination_rating") @db.Decimal(2, 1)
+
+  // Tags
+  positiveTags String[] @map("positive_tags") @db.Text
+  neutralTags  String[] @map("neutral_tags") @db.Text
+  negativeTags String[] @map("negative_tags") @db.Text
+
+  comment    String?  @db.Text
+  isVerified Boolean  @default(false) @map("is_verified")
+  isPublic   Boolean  @default(true) @map("is_public")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  trip         Trip  @relation(fields: [tripId], references: [id])
+  reviewer     User  @relation("Reviewer", fields: [reviewerId], references: [id])
+  reviewedUser User? @relation("ReviewedUser", fields: [reviewedUserId], references: [id])
+
+  @@unique([tripId, reviewerId, reviewedUserId, type])
+  @@index([tripId], name: "idx_reviews_trip")
+  @@index([reviewedUserId], name: "idx_reviews_reviewed_user")
+  @@index([overallRating(sort: Desc)], name: "idx_reviews_rating")
+  @@index([isVerified], name: "idx_reviews_verified")
+  @@map("reviews")
+}
+
+model SafetyReport {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId        String       @map("reporter_id") @db.Uuid
+  type              ReportType
+  reportedUserId    String?      @map("reported_user_id") @db.Uuid
+  reportedTripId    String?      @map("reported_trip_id") @db.Uuid
+  reportedMessageId String?      @map("reported_message_id") @db.Uuid
+
+  // Report details
+  reason        String   @db.VarChar(50)
+  description   String   @db.Text
+  evidenceUrls  String[] @map("evidence_urls") @db.Text
+
+  // Emergency
+  isEmergency       Boolean @default(false) @map("is_emergency")
+  emergencyLocation Json?   @map("emergency_location") @db.JsonB
+
+  // Moderation
+  status              ReportStatus @default(pending)
+  assignedModeratorId String?      @map("assigned_moderator_id") @db.Uuid
+  moderatorNotes      String?      @map("moderator_notes") @db.Text
+  actionTaken         String?      @map("action_taken") @db.VarChar(100)
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamp(6)
+
+  reporter     User  @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUser User? @relation("ReportedUser", fields: [reportedUserId], references: [id])
+  reportedTrip Trip? @relation(fields: [reportedTripId], references: [id])
+
+  @@index([status, createdAt(sort: Desc)], name: "idx_reports_status")
+  @@index([reporterId], name: "idx_reports_reporter")
+  @@index([reportedUserId], name: "idx_reports_reported_user")
+  @@index([isEmergency, createdAt(sort: Desc)], name: "idx_reports_emergency")
+  @@map("safety_reports")
+}
+
+model Notification {
+  id      String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId  String           @map("user_id") @db.Uuid
+  type    NotificationType
+  title   String           @db.VarChar(200)
+  message String           @db.Text
+
+  // Related entities
+  tripId   String? @map("trip_id") @db.Uuid
+  matchId  String? @map("match_id") @db.Uuid
+  senderId String? @map("sender_id") @db.Uuid
+
+  actionUrl String?  @map("action_url") @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  isSent    Boolean  @default(false) @map("is_sent")
+  sentAt    DateTime? @map("sent_at") @db.Timestamp(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], name: "idx_notifications_user_unread")
+  @@map("notifications")
+}
+
+model UserBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blockerId String   @map("blocker_id") @db.Uuid
+  blockedId String   @map("blocked_id") @db.Uuid
+  reason    String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId], name: "idx_blocks_blocker")
+  @@map("user_blocks")
+}
+
+model EmergencyContact {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(100)
+  phoneNumber  String   @map("phone_number") @db.VarChar(15)
+  relationship String?  @db.VarChar(50)
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, phoneNumber])
+  @@index([userId], name: "idx_emergency_contacts_user")
+  @@map("emergency_contacts")
+}

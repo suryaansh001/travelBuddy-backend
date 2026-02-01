@@ -1,0 +1,1845 @@
+🔥 Complete Backend Functionalities - Detailed Specification
+
+📋 Table of Contents
+
+Authentication & Authorization
+User Profile Management
+Trip Management
+Swipe & Matching System
+Chat System
+Review & Rating System
+Safety & Reporting
+Notification System
+Analytics & Recommendations
+Admin & Moderation
+
+
+1. Authentication & Authorization
+1.1 User Registration
+Description: Register new students with college email validation
+Tables Used: users
+Functionality:
+
+Validate email domain against whitelist of approved college domains
+Check for duplicate email addresses
+Hash password using bcrypt (12 rounds minimum)
+Store user basic info (name, college, department, year)
+Set default trust score to 5.0
+Generate email verification token
+Send verification email with OTP
+Return JWT token for immediate login (with limited access until verified)
+
+Business Rules:
+
+Only .edu or approved college domains allowed
+Password must be 8+ characters with mix of upper/lower/numbers
+Email must be unique across the system
+User starts with emailVerified: false
+
+
+1.2 Email Verification (OTP)
+Description: Verify college email with 6-digit OTP
+Tables Used: users
+External Storage: Redis (for OTP storage)
+Functionality:
+
+Generate 6-digit random OTP
+Store OTP in Redis with 10-minute expiration (key: otp:email:{email})
+Send OTP via email service
+Validate OTP on submission
+Update users.emailVerified = true on success
+Delete OTP from Redis after verification
+Allow max 3 OTP resend attempts per hour per email
+
+Business Rules:
+
+OTP expires after 10 minutes
+Max 5 verification attempts before blocking for 1 hour
+Email cannot be changed once verified
+
+
+1.3 Phone Verification (OTP)
+Description: Optional phone verification for enhanced trust
+Tables Used: users
+External Storage: Redis (for OTP storage)
+Functionality:
+
+Generate 6-digit OTP
+Send via SMS service (Twilio/AWS SNS)
+Store in Redis with key: otp:phone:{phoneNumber}
+10-minute expiration
+Update users.phoneNumber and users.phoneVerified = true
+Increase trust score by 0.2 on successful verification
+
+Business Rules:
+
+Phone number must be unique
+Max 3 SMS per phone number per day
+Optional but recommended for trip posting
+
+
+1.4 Login
+Description: Authenticate user with email/password
+Tables Used: users, user_interests
+Functionality:
+
+Query user by email
+Check if account is blocked (isBlocked = true)
+Verify password hash using bcrypt
+Check email verification status
+Update lastLoginAt timestamp
+Generate JWT access token (expires 24h)
+Generate refresh token (expires 30d, store in Redis)
+Return user profile with interests
+
+Business Rules:
+
+Blocked users cannot login
+Failed login attempts tracked (5 failures = 15min lockout)
+Session expires after 24 hours of inactivity
+
+
+1.5 Logout
+Description: Invalidate user session
+Tables Used: None
+External Storage: Redis (token blacklist)
+Functionality:
+
+Extract JWT from authorization header
+Decode token to get expiration time
+Add token to blacklist in Redis: blacklist:{token}
+Set Redis TTL to token's remaining lifetime
+Clear refresh token from Redis
+Return success message
+
+Business Rules:
+
+Blacklisted tokens cannot be reused
+Client must delete stored token
+
+
+1.6 Token Refresh
+Description: Get new access token using refresh token
+Tables Used: None
+External Storage: Redis (refresh token storage)
+Functionality:
+
+Validate refresh token signature
+Check if refresh token exists in Redis
+Verify user still exists and is active
+Generate new access token
+Optionally rotate refresh token
+Return new token pair
+
+Business Rules:
+
+Refresh token valid for 30 days
+Can only refresh if original token expired (not blacklisted)
+
+
+1.7 Forgot Password
+Description: Initiate password reset flow
+Tables Used: users
+External Storage: Redis (reset token)
+Functionality:
+
+Check if user exists by email (don't reveal if not found)
+Generate secure random reset token (32 bytes hex)
+Store token in Redis: reset:{token} → userId, TTL 1 hour
+Send password reset link via email
+Return generic success message
+
+Business Rules:
+
+Always return success even if email doesn't exist (security)
+Reset link expires after 1 hour
+Only one active reset token per user (invalidate previous)
+
+
+1.8 Reset Password
+Description: Complete password reset with token
+Tables Used: users
+External Storage: Redis (reset token)
+Functionality:
+
+Validate reset token from Redis
+Check token hasn't expired
+Hash new password
+Update users.passwordHash
+Delete reset token from Redis
+Invalidate all active sessions (blacklist all tokens)
+Send confirmation email
+
+Business Rules:
+
+Token single-use only
+New password must meet complexity requirements
+All devices logged out after reset
+
+
+1.9 Change Password (Authenticated)
+Description: Change password for logged-in user
+Tables Used: users
+Functionality:
+
+Verify current password
+Hash new password
+Update users.passwordHash
+Optionally invalidate other sessions (keep current)
+Log password change event
+
+Business Rules:
+
+Must provide correct current password
+New password cannot be same as old
+Recommended to notify via email
+
+
+1.10 JWT Middleware
+Description: Authenticate requests with JWT
+Tables Used: users
+External Storage: Redis (blacklist check)
+Functionality:
+
+Extract token from Authorization: Bearer {token} header
+Check if token in blacklist (Redis)
+Verify JWT signature and expiration
+Decode payload to get userId
+Fetch user from database
+Check if user is active and not blocked
+Attach user object to req.user
+Continue to route handler
+
+Business Rules:
+
+401 if token missing/invalid/expired
+403 if user blocked or inactive
+Token checked on every protected route
+
+
+2. User Profile Management
+2.1 Get Own Profile
+Description: Retrieve complete user profile with stats
+Tables Used: users, user_interests, emergency_contacts, reviews, matches, trips
+Functionality:
+
+Fetch user by ID with all relations
+Calculate cancellation rate using get_cancellation_rate() function
+Count total trips created
+Count total reviews received
+Calculate average rating from companion reviews
+Include interests array
+Include emergency contacts
+Return profile object without password hash
+
+Computed Fields:
+
+cancellationRate: from function
+totalReviews: count from reviews table
+averageRating: avg of reviews.overallRating where type = companion
+totalTripsCreated: count from trips table
+
+
+2.2 Get Other User Profile (Public View)
+Description: View another user's public profile
+Tables Used: users, user_interests, reviews
+Functionality:
+
+Fetch user by ID (public fields only)
+Check if viewing user has blocked target user (hide if blocked)
+Fetch public reviews only (isPublic = true)
+Calculate trust score
+Show total trips completed
+Show interests
+Hide sensitive data (email, phone, emergency contacts)
+
+Hidden Fields:
+
+Email
+Phone number
+Emergency contacts
+Private reviews
+Exact cancellation count (show rate only)
+
+
+2.3 Update Profile
+Description: Edit user profile information
+Tables Used: users
+Functionality:
+
+Update allowed fields:
+
+fullName
+bio (max 500 chars)
+department
+yearOfStudy
+gender
+preferredGender
+
+
+Validate field constraints
+Update updatedAt timestamp
+Return updated profile
+
+Validation Rules:
+
+Bio max 500 characters
+Year of study: 1-5 only
+Gender: predefined enum values
+Cannot change: email, college, domain
+
+
+2.4 Upload Profile Photo
+Description: Upload and store profile picture
+Tables Used: users
+External Service: Cloudinary
+Functionality:
+
+Accept image file (JPG, PNG, WebP)
+Validate file size (max 5MB)
+Upload to Cloudinary with transformations:
+
+Resize to 400x400
+Crop to face (gravity: face)
+Auto quality optimization
+Format: auto (WebP if supported)
+
+
+Delete old photo from Cloudinary if exists
+Update users.profilePhotoUrl
+Return new photo URL
+
+Business Rules:
+
+Max file size: 5MB
+Allowed formats: JPG, PNG, WebP
+Auto-cropped to square with face detection
+
+
+2.5 Manage Interests
+Description: Add/update user interests
+Tables Used: user_interests
+Functionality:
+
+Delete all existing interests for user
+Insert new interests from provided array
+Validate against predefined interest list
+Max 10 interests per user
+Return updated interests array
+
+Predefined Interests:
+
+Music, Sports, Coding, Reading, Travel, Photography, Gaming, Art, Food, Movies, Fitness, Dance, etc.
+
+Business Rules:
+
+Max 10 interests
+Only from predefined list
+Case-insensitive matching
+
+
+2.6 Add Emergency Contact
+Description: Add emergency contact for safety
+Tables Used: emergency_contacts
+Functionality:
+
+Create new emergency contact record
+If isPrimary = true, unset other primary contacts
+Validate phone number format
+Max 3 emergency contacts per user
+Return created contact
+
+Business Rules:
+
+Max 3 contacts per user
+Only one can be primary
+Phone number validated (10 digits for India)
+Relationship optional but recommended
+
+
+2.7 Update Emergency Contact
+Description: Edit emergency contact details
+Tables Used: emergency_contacts
+Functionality:
+
+Verify contact belongs to user
+Update name, phone, relationship, isPrimary
+If setting as primary, unset others
+Return updated contact
+
+
+2.8 Delete Emergency Contact
+Description: Remove emergency contact
+Tables Used: emergency_contacts
+Functionality:
+
+Verify ownership
+Delete contact
+If was primary, auto-promote next contact
+Return success message
+
+
+2.9 Get User Statistics
+Description: Detailed stats for profile display
+Tables Used: users, matches, trips, reviews
+Functionality:
+
+Total trips completed: count from matches + trips where status = completed
+Total trips cancelled: count where status = cancelled
+Cancellation rate: calculated function
+Trust score: from users.trustScore
+Total reviews: count from reviews where reviewedUserId = userId
+Average rating: avg from reviews
+Total trips created: count from trips
+Total trips joined: count from matches where status = accepted
+Response rate: percentage of swipes responded to
+
+Computed Metrics:
+
+Response rate = (responded swipes / total swipes received) * 100
+Avg response time (from swipe to match acceptance)
+
+
+2.10 Block User
+Description: Block another user from interaction
+Tables Used: user_blocks
+Functionality:
+
+Check user cannot block themselves
+Check if already blocked
+Create block record with optional reason
+Hide blocked user from:
+
+Trip search results
+Swipe suggestions
+Chat participant lists
+
+
+Return success message
+
+Side Effects:
+
+Blocked user's trips hidden from blocker's search
+Existing matches remain but no new interactions
+Chat rooms remain accessible (for evidence)
+
+
+2.11 Unblock User
+Description: Remove user block
+Tables Used: user_blocks
+Functionality:
+
+Delete block record
+Re-enable user in search/discovery
+Return success message
+
+
+2.12 Get Blocked Users List
+Description: View list of blocked users
+Tables Used: user_blocks, users
+Functionality:
+
+Fetch all blocks where blockerId = userId
+Include blocked user basic info (name, photo)
+Include block reason and date
+Order by most recent
+Return array of blocks
+
+
+3. Trip Management
+3.1 Create Trip
+Description: Post new travel buddy or cab pool trip
+Tables Used: trips
+Functionality:
+
+Validate user is verified (emailVerified = true)
+Validate trip type (travel_buddy or cab_pool)
+Geocode city names to lat/lng if not provided
+Calculate estimated duration using distance API
+Set totalSeats and availableSeats (same initially)
+For cab_pool: calculate farePerPerson = estimatedFare / totalSeats
+Set default filters based on user preferences
+Create trip record with status = open
+Return created trip with ID
+
+Validation Rules:
+
+Departure date must be future
+Total seats: 1-8
+Origin ≠ Destination
+If cab_pool, estimatedFare required
+Vibe tags max 5
+
+
+3.2 Get Trip Details
+Description: View single trip with full details
+Tables Used: trips, users, swipes, matches, trip_participants (materialized view)
+Functionality:
+
+Fetch trip by ID with creator info
+Check if viewer is blocked by creator (403 if yes)
+Include creator profile (name, photo, trust score, total trips)
+Count total swipes on trip
+Count confirmed participants
+Check if current user already swiped
+Check if current user is participant
+Show participant list (if user is participant)
+Increment viewCount
+Return trip object
+
+Visibility Rules:
+
+Public: basic trip info, creator name/photo
+Participants only: participant list, chat access
+Creator only: pending swipes, match requests
+
+
+3.3 Search/Discover Trips
+Description: Find trips based on filters
+Tables Used: trips, users, user_blocks
+Functionality:
+
+Filter by:
+
+Origin city
+Destination city
+Departure date range
+Trip type (travel_buddy / cab_pool)
+Available seats (min)
+Gender preference match
+Same department/year (if specified)
+Verified users only
+Trust score minimum (default 3.5)
+
+
+Exclude:
+
+User's own trips
+Trips from blocked users
+Trips user already swiped on
+Past trips
+Cancelled trips
+
+
+Sort by:
+
+Departure date (ascending)
+Creator trust score (descending)
+Distance from user location (optional)
+
+
+Pagination (20 per page)
+Return trip array with creator info
+
+Geographic Search (Optional):
+
+Use PostGIS earth_distance function
+Filter trips within X km radius of user location
+Index: idx_trips_origin_geo
+
+
+3.4 Get Nearby Trips (Geolocation)
+Description: Find trips near user's current location
+Tables Used: trips
+Functionality:
+
+Accept user's current lat/lng
+Use PostGIS earth_distance function
+Find trips with origin within radius (default 50km)
+Filter by standard search criteria
+Sort by distance (nearest first)
+Return trips with distance in km
+
+Query Uses:
+
+idx_trips_origin_geo index
+ll_to_earth() function
+earth_box() for bounding box optimization
+
+
+3.5 Update Trip
+Description: Edit trip details (before departure)
+Tables Used: trips, matches, notifications
+Functionality:
+
+Verify user is trip creator
+Check trip status is open (cannot edit in_progress/completed)
+Check no confirmed matches if changing seats
+Allow updates to:
+
+Title, description
+Departure time (only if >24h away)
+Vibe tags
+Gender preference
+Luggage space
+
+
+If critical changes (time/seats), notify all matched users
+Update updatedAt
+Return updated trip
+
+Business Rules:
+
+Cannot change: origin, destination, trip type
+Cannot reduce totalSeats below confirmed participants
+Departure time change triggers notifications
+
+
+3.6 Cancel Trip
+Description: Cancel trip and notify participants
+Tables Used: trips, matches, notifications
+Functionality:
+
+Verify user is creator
+Check trip not already completed
+Update status = cancelled
+Update all matches to status = cancelled
+Release all seats (set availableSeats = totalSeats)
+Create notifications for all participants
+Increment creator's totalTripsCancelled
+Recalculate creator's trust score (penalty for late cancellation)
+Return success message
+
+Penalties:
+
+Cancel >48h before: no penalty
+Cancel 24-48h before: -0.1 trust score
+Cancel <24h before: -0.3 trust score
+No-show: -0.5 trust score
+
+
+3.7 Mark Trip In Progress
+Description: Start trip when departure occurs
+Tables Used: trips
+Functionality:
+
+Verify user is creator or participant
+Check departure time has passed
+Update status = in_progress
+Enable live location sharing in chat
+Return updated trip
+
+
+3.8 Mark Trip Completed
+Description: Mark trip as completed
+Tables Used: trips, matches, notifications
+Functionality:
+
+Verify user is creator
+Check status is in_progress
+Update status = completed
+Update all matches to increment participant trip counts
+Archive chat room after 24 hours
+Send review reminder notifications to all participants
+Update creator and participant totalTripsCompleted
+Return success message
+
+Triggers:
+
+Auto-archive chat after 24h
+Review reminders sent immediately
+Stats update for all participants
+
+
+3.9 Get My Trips (Created)
+Description: List all trips user created
+Tables Used: trips, matches
+Functionality:
+
+Fetch trips where createdBy = userId
+Include counts:
+
+Pending swipes
+Confirmed participants
+Available seats
+
+
+Filter by status (open / in_progress / completed / cancelled)
+Sort by departure date
+Pagination
+Return trip array
+
+
+3.10 Get My Trips (Joined)
+Description: List trips user joined as participant
+Tables Used: matches, trips, users
+Functionality:
+
+Fetch matches where matchedUserId = userId and status = accepted
+Include trip details and creator info
+Filter by trip status
+Sort by departure date
+Show seat count and fare share
+Return trip array
+
+
+3.11 Get Trip Participants
+Description: View all confirmed participants
+Tables Used: trip_participants (materialized view)
+Functionality:
+
+Verify user is creator or participant
+Fetch from materialized view where tripId = tripId
+Include:
+
+User ID, name, photo
+Role (creator / participant)
+Seats confirmed
+Join date
+Trust score
+
+
+Order by role (creator first), then join date
+Return participant array
+
+Access Control:
+
+Only trip creator and confirmed participants can view
+Public can see participant count only
+
+
+3.12 Get Trip Analytics (Creator Only)
+Description: View trip performance metrics
+Tables Used: trips, swipes, matches, analytics_events
+Functionality:
+
+Verify user is creator
+Calculate:
+
+Total views
+Total swipes (right/left/super)
+Swipe-to-match conversion rate
+Average time to fill seats
+Geographic distribution of interested users
+
+
+Return analytics object
+
+
+4. Swipe & Matching System
+4.1 Swipe on Trip
+Description: Express interest in a trip (right/left/super)
+Tables Used: swipes, trips, notifications
+Functionality:
+
+Validate user hasn't already swiped on this trip
+Check user is not blocked by creator
+Check trip is still open and has seats
+Create swipe record with direction and optional intro message
+If swipe = right/super:
+
+Increment trip swipeCount
+Check for mutual match (creator swiped right on user)
+If mutual match:
+
+Create match record automatically
+Create chat room
+Send notifications to both users
+
+
+Else:
+
+Notify creator of interest
+
+
+
+
+Return swipe result with match status
+
+Match Detection Logic:
+SELECT EXISTS(
+  creator swipe on user = right 
+  AND user swipe on trip = right
+) AS is_match
+
+4.2 Get Swipes on My Trip (Creator View)
+Description: View users interested in trip
+Tables Used: swipes, users, matches
+Functionality:
+
+Verify user is trip creator
+Fetch swipes where direction = right or super
+Exclude users already matched
+Include user profile:
+
+Name, photo, trust score
+Interests matching trip vibe
+Introduction message
+Mutual interest count
+
+
+Sort by:
+
+Super swipes first
+Then by trust score
+Then by timestamp
+
+
+Return swipe array
+
+
+4.3 Swipe on User (Creator Response)
+Description: Creator swipes on interested users
+Tables Used: swipes, matches, chat_rooms, notifications
+Functionality:
+
+Verify user is trip creator
+Check user has swiped right on trip
+Create creator's swipe record
+If right swipe:
+
+Check for mutual match
+Create match record with status = pending
+Create chat room for trip
+Send match notification to user
+Return match object
+
+
+If left swipe:
+
+Just record swipe
+No notification sent
+Return rejection confirmation
+
+
+
+Business Logic:
+
+Match created only on mutual right swipe
+Chat unlocked immediately on match
+User still needs to accept match formally to confirm seats
+
+
+4.4 Get My Swipes (User View)
+Description: View trips user has swiped on
+Tables Used: swipes, trips, users
+Functionality:
+
+Fetch swipes where userId = currentUserId
+Include trip details and creator info
+Show swipe direction and timestamp
+Show if creator responded (check creator's swipe)
+Filter by direction (right/left)
+Sort by timestamp descending
+Return swipe array
+
+
+4.5 Get Match Status
+Description: Check if mutual match exists
+Tables Used: swipes, matches
+Functionality:
+
+Check if both user and creator swiped right
+Check if match record exists
+Return match status object:
+
+isMutualSwipe: boolean
+matchExists: boolean
+matchStatus: pending/accepted/rejected
+chatRoomId: if match exists
+
+
+
+
+4.6 Accept Match (Confirm Participation)
+Description: User formally accepts match and confirms seats
+Tables Used: matches, trips, notifications
+Uses Function: accept_match(matchId, seatsRequested)
+Functionality:
+
+Verify match status is pending
+Verify trip has enough available seats
+Call database function with transaction:
+
+Lock trip row (SELECT FOR UPDATE)
+Check available seats
+Update match: status = accepted, seatsConfirmed = X, acceptedAt = NOW()
+Decrement trip availableSeats
+
+
+Send confirmation notification to creator
+If trip now full, auto-close trip
+Return updated match
+
+Transaction Safety:
+
+Uses FOR UPDATE lock to prevent race conditions
+Atomic seat allocation
+Rollback on any error
+
+
+4.7 Reject Match
+Description: User declines match invitation
+Tables Used: matches, notifications
+Functionality:
+
+Update match: status = rejected, rejectedAt = NOW()
+Notify creator of rejection
+Optionally provide reason
+Return success message
+
+
+4.8 Cancel Match (Before Trip)
+Description: Cancel confirmed participation
+Tables Used: matches, trips, notifications
+Uses Function: cancel_match(matchId)
+Functionality:
+
+Verify match is in accepted status
+Call database function:
+
+Return seats to trip (availableSeats += seatsConfirmed)
+Update match: status = cancelled, cancelledAt = NOW()
+
+
+Increment user's totalTripsCancelled
+Apply trust score penalty based on timing
+Notify creator
+Return success message
+
+Penalties:
+
+
+
+48h before: no penalty
+
+
+24-48h: -0.1 trust score
+<24h: -0.3 trust score
+
+
+4.9 Get My Matches
+Description: View all user's matches
+Tables Used: matches, trips, users
+Functionality:
+
+Fetch matches where matchedUserId = userId
+Include trip and creator details
+Filter by status (pending/accepted/rejected/cancelled)
+Sort by:
+
+Pending first
+Then by trip departure date
+
+
+Show seats confirmed and fare share
+Return match array
+
+
+4.10 Get Trip Matches (Creator View)
+Description: View all matches for a trip
+Tables Used: matches, users
+Functionality:
+
+Verify user is trip creator
+Fetch all matches for trip
+Group by status
+Include user profiles
+Calculate total confirmed seats
+Show pending requests count
+Return matches grouped object
+
+
+5. Chat System
+5.1 Create Chat Room
+Description: Create room when match occurs
+Tables Used: chat_rooms
+Functionality:
+
+Check if room already exists for trip
+Create room linked to tripId
+Set isActive = true
+Add all confirmed participants to room (via trip_participants view)
+Return chat room object with ID
+
+Business Logic:
+
+One room per trip
+Auto-created on first match
+All participants join same room
+
+
+5.2 Send Message
+Description: Send message in trip chat
+Tables Used: chat_messages
+Real-time: Socket.io broadcast
+Functionality:
+
+Verify user is participant in trip
+Validate message type (text/image/location/payment/system)
+Create message record with JSONB payload
+Broadcast via WebSocket to room participants
+Emit typing stopped event
+Store message in PostgreSQL for archive
+Return message object
+
+Payload Structure by Type:
+text: { content: string, read_by: userId[] }
+image: { image_url: string, caption?: string, read_by: [] }
+location: { lat: number, lng: number, address: string, read_by: [] }
+payment: { payment_url: string, amount: number, upi_id: string, read_by: [] }
+system: { content: string, event_type: string, event_data: {} }
+
+5.3 Get Messages
+Description: Fetch chat history with pagination
+Tables Used: chat_messages
+Functionality:
+
+Verify user is participant
+Fetch messages ordered by createdAt DESC
+Pagination (50 messages per page, load more on scroll)
+Mark messages as read (update read_by array)
+Return message array in chronological order
+
+Optimization:
+
+Index: idx_chat_room_time on (room_id, created_at DESC)
+Cursor-based pagination for real-time chats
+
+
+5.4 Mark Messages as Read
+Description: Update read receipts
+Tables Used: chat_messages
+Functionality:
+
+Accept array of message IDs
+For each message, add userId to payload.read_by array
+Use JSONB update query:
+
+sql  UPDATE chat_messages 
+  SET payload = jsonb_set(payload, '{read_by}', 
+    (payload->'read_by')::jsonb || to_jsonb(userId))
+  WHERE id = ANY(messageIds)
+
+Broadcast read receipts via WebSocket
+Return success count
+
+
+5.5 Get Unread Count
+Description: Count unread messages in room
+Tables Used: chat_messages
+Functionality:
+
+Query messages where:
+
+roomId = roomId
+senderId != userId
+NOT (payload->'read_by' ? userId) (JSONB contains check)
+
+
+Return count
+
+Used For:
+
+Badge notifications
+Chat list indicators
+
+
+5.6 Upload Image/File
+Description: Share images or payment proofs
+Tables Used: chat_messages
+External Service: Cloudinary
+Functionality:
+
+Accept file upload (max 10MB)
+Upload to Cloudinary
+Generate thumbnail for images
+Create message with type=image or type=payment
+Store URL in payload
+Broadcast to chat room
+Return message object
+
+File Types:
+
+Images: JPG, PNG, WebP
+Documents: PDF (payment proofs)
+
+
+5.7 Share Live Location
+Description: Share real-time location during trip
+Tables Used: chat_messages
+Real-time: Socket.io
+Functionality:
+
+Accept lat/lng coordinates
+Reverse geocode to address
+Create message with type=location
+Broadcast to all participants
+Store in database for history
+Return message object
+
+Business Logic:
+
+Only allowed during trip (status=in_progress)
+Updates every 30 seconds (throttled)
+Auto-expires after trip completion
+
+
+5.8 Delete Message (Soft Delete)
+Description: Remove message from chat
+Tables Used: chat_messages
+Functionality:
+
+Verify user is message sender
+Update isDeleted = true
+Broadcast deletion event via WebSocket
+Message content replaced with "Message deleted"
+Keep record for moderation
+Return success message
+
+Business Logic:
+
+Can delete within 1 hour of sending
+Soft delete only (record retained)
+Both sender and admin can delete
+
+
+5.9 Flag Message
+Description: Report inappropriate message
+Tables Used: chat_messages, safety_reports
+Functionality:
+
+Update isFlagged = true
+Create safety report with:
+
+type = chat_message
+reportedMessageId
+Reason and description
+
+
+Notify moderators
+Return success message
+
+
+5.10 Archive Chat Room
+Description: Auto-archive after trip completion
+Tables Used: chat_rooms, chat_messages
+Functionality:
+
+Check trip status is completed
+Check 24 hours passed since completion
+Update isActive = false, archivedAt = NOW()
+Move messages to PostgreSQL cold storage (if using Firestore)
+Keep room accessible but read-only
+Return success
+
+Trigger:
+
+Cron job runs hourly
+Checks trips completed >24h ago
+
+
+5.11 Socket.io Real-time Events
+Description: WebSocket event handling
+Events:
+
+join_room: User joins chat room
+leave_room: User leaves chat room
+send_message: Emit message to room
+typing: User is typing indicator
+stop_typing: Stop typing
+message_read: Read receipt update
+user_online: User online status
+user_offline: User offline status
+
+Implementation:
+
+Redis adapter for multi-server scaling
+Room = chat:${tripId}
+Authenticate socket with JWT
+Store socket-user mapping in Redis
+
+
+6. Review & Rating System
+6.1 Submit Trip Review
+Description: Rate overall trip experience
+Tables Used: reviews
+Functionality:
+
+Verify user was participant in trip
+Check trip is completed
+Check user hasn't already reviewed trip
+Create review with:
+
+type = trip
+reviewedUserId = null
+Overall rating + trip-specific ratings (punctuality, planning, cost, coordination)
+Optional comment
+isVerified = true (auto for completed trips)
+
+
+Return created review
+
+Business Rules:
+
+Can only review after trip completion
+48-hour window to submit (send reminders)
+One trip review per user per trip
+
+
+6.2 Submit Companion Review
+Description: Rate fellow traveler
+Tables Used: reviews
+Triggers: Updates users.trustScore via trigger
+Functionality:
+
+Verify user was co-participant with reviewed user
+Check trip is completed
+Check not already reviewed this companion
+Create review with:
+
+type = companion
+reviewedUserId = companionId
+Overall rating 1-5
+Tags (positive/neutral/negative)
+Optional comment
+isPublic = true (default)
+isVerified = true
+
+
+Trigger recalculates reviewed user's trust score
+Return created review
+
+Trust Score Recalculation (Trigger):
+sqlUPDATE users 
+SET trustScore = AVG(reviews.overallRating) 
+WHERE reviewedUserId = userId 
+  AND type = 'companion' 
+  AND isVerified = true
+```
+
+---
+
+### 6.3 Get Reviews for User
+**Description:** Fetch all reviews received by user  
+**Tables Used:** `reviews`, `users`, `trips`  
+**Functionality:**
+- Fetch reviews where `reviewedUserId = userId`
+- Filter by `isPublic = true` (unless viewing own)
+- Include reviewer info (name, photo) if public
+- Include trip reference
+- Group by rating (5★, 4★, etc.)
+- Calculate tag frequencies
+- Sort by most recent
+- Pagination
+- Return reviews array + summary stats
+
+**Summary Stats:**
+- Total reviews
+- Average rating
+- Rating distribution
+- Most common positive tags
+- Most common negative tags
+
+---
+
+### 6.4 Get Reviews by User (Given)
+**Description:** Reviews user has written  
+**Tables Used:** `reviews`, `users`, `trips`  
+**Functionality:**
+- Fetch reviews where `reviewerId = userId`
+- Include reviewed user info
+- Include trip reference
+- Sort by date
+- Return reviews array
+
+---
+
+### 6.5 Update Review
+**Description:** Edit review within time limit  
+**Tables Used:** `reviews`  
+**Functionality:**
+- Verify user is reviewer
+- Check review created <48 hours ago
+- Allow updates to:
+  - Rating
+  - Tags
+  - Comment
+  - isPublic flag
+- Re-trigger trust score calculation
+- Return updated review
+
+**Business Rules:**
+- Can edit within 48 hours only
+- Cannot change reviewed user or trip
+- Update triggers trust score recalc
+
+---
+
+### 6.6 Delete Review
+**Description:** Remove review (rare, moderation only)  
+**Tables Used:** `reviews`  
+**Functionality:**
+- Admin/moderator only
+- Soft delete (keep record, mark as deleted)
+- Recalculate trust score for reviewed user
+- Notify reviewer of deletion with reason
+- Return success
+
+---
+
+### 6.7 Report Review
+**Description:** Flag inappropriate review  
+**Tables Used:** `safety_reports`  
+**Functionality:**
+- Create safety report
+- Flag review for moderation
+- Provide reason (false info, harassment, spam)
+- Queue for moderator review
+- Return report ID
+
+---
+
+### 6.8 Get Review Reminders
+**Description:** Check if user has pending reviews  
+**Tables Used:** `matches`, `reviews`, `trips`  
+**Functionality:**
+- Find completed trips where:
+  - User was participant
+  - Trip completed <48 hours ago
+  - User hasn't submitted reviews yet
+- Return array of trips needing reviews
+- Include participant list to review
+
+**Used For:**
+- Notification triggers
+- Profile page reminders
+- Email reminders
+
+---
+
+## 7. Safety & Reporting
+
+### 7.1 Report User
+**Description:** Report user for misconduct  
+**Tables Used:** `safety_reports`  
+**Functionality:**
+- Create report with:
+  - `type = user`
+  - `reportedUserId`
+  - Reason (harassment, fraud, fake profile, unsafe behavior)
+  - Description (required, min 50 chars)
+  - Evidence URLs (optional screenshots)
+- Queue for moderator review
+- Auto-flag user if multiple reports (3+ in 24h)
+- Return report ID
+
+**Auto-actions:**
+- 3+ reports in 24h: temp suspend account
+- 5+ reports total: escalate to admin
+- Flagged users: warn before any new interactions
+
+---
+
+### 7.2 Report Trip
+**Description:** Flag trip for safety concerns  
+**Tables Used:** `safety_reports`  
+**Functionality:**
+- Create report with:
+  - `type = trip`
+  - `reportedTripId`
+  - Reason (fake trip, unsafe route, scam)
+  - Description
+  - Evidence
+- Auto-hide trip from search if 3+ reports
+- Notify moderators
+- Return report ID
+
+---
+
+### 7.3 Emergency Panic Button
+**Description:** Send emergency alert  
+**Tables Used:** `safety_reports`, `emergency_contacts`, `trips`  
+**External:** SMS service  
+**Functionality:**
+- Create urgent safety report with:
+  - `isEmergency = true`
+  - Current location (lat/lng)
+  - Current trip details
+  - Reason: "panic_button"
+- Send SMS to all emergency contacts with:
+  - User's name
+  - Live location link
+  - Trip details
+  - Current participants
+- Notify all trip participants
+- Alert platform moderators (24/7 team)
+- Share location with local authorities if configured
+- Return confirmation
+
+**SMS Template:**
+```
+EMERGENCY ALERT: [Name] has activated panic button.
+Location: [Google Maps Link]
+Trip: [Origin] to [Destination]
+Participants: [Names]
+Call [Phone] immediately.
+```
+
+---
+
+### 7.4 Get My Reports
+**Description:** View submitted reports  
+**Tables Used:** `safety_reports`  
+**Functionality:**
+- Fetch reports where `reporterId = userId`
+- Include status (pending/investigating/resolved)
+- Include moderator notes if resolved
+- Sort by date
+- Return reports array
+
+---
+
+### 7.5 Update Report Status (Moderator)
+**Description:** Process safety report  
+**Tables Used:** `safety_reports`, `users`, `trips`  
+**Functionality:**
+- Admin/moderator only
+- Update report status
+- Add moderator notes
+- Take action:
+  - `warned`: Send warning to user
+  - `suspended`: Temp block (7/30 days)
+  - `banned`: Permanent ban
+  - `no_action`: Close report
+- Log action taken
+- Notify reporter of outcome
+- Return updated report
+
+---
+
+### 7.6 View Emergency Contacts (Trip Participants)
+**Description:** Access emergency contacts during trip  
+**Tables Used:** `emergency_contacts`, `trip_participants`  
+**Functionality:**
+- Verify requester is participant in same active trip
+- Fetch emergency contacts for all trip participants
+- Only accessible during trip (status=in_progress)
+- Return contacts array grouped by participant
+
+**Business Logic:**
+- Only visible during active trip
+- Auto-hidden after trip completion
+- Requires mutual participation
+
+---
+
+### 7.7 Block User from Trip (Creator)
+**Description:** Remove and block participant  
+**Tables Used:** `matches`, `user_blocks`, `trips`  
+**Functionality:**
+- Verify user is trip creator
+- Cancel participant's match
+- Block user from future trips
+- Return seats to available pool
+- Notify participant of removal
+- Provide reason (required)
+- Return success
+
+**Use Cases:**
+- Inappropriate behavior
+- Fake profile detected
+- Payment issues
+
+---
+
+## 8. Notification System
+
+### 8.1 Create Notification
+**Description:** Generate notification for user  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Create notification record with:
+  - Type (swipe_received, match_confirmed, etc.)
+  - Title and message
+  - Related entity IDs (tripId, matchId, senderId)
+  - Action URL (deep link)
+  - `isRead = false`, `isSent = false`
+- Queue for push notification delivery
+- Return notification ID
+
+---
+
+### 8.2 Send Push Notification
+**Description:** Deliver notification via FCM/APNS  
+**Tables Used:** `notifications`  
+**External:** Firebase Cloud Messaging  
+**Functionality:**
+- Fetch user's device tokens from Redis/DB
+- Format notification for FCM:
+  - Title, body
+  - Data payload (tripId, type, etc.)
+  - Click action (deep link)
+- Send via FCM API
+- Update `isSent = true`, `sentAt = NOW()`
+- Handle delivery failures (retry 3x)
+- Return delivery status
+
+**Notification Types & Templates:**
+
+| Type | Title | Body |
+|------|-------|------|
+| swipe_received | New Interest! | [User] is interested in your trip to [City] |
+| match_confirmed | It's a Match! | You matched with [User] for [Trip] |
+| trip_update | Trip Updated | [Creator] updated the trip to [City] |
+| trip_cancelled | Trip Cancelled | [Creator] cancelled the trip to [City] |
+| chat_message | New Message | [User]: [Message Preview] |
+| review_reminder | Rate Your Trip | How was your trip to [City]? Rate now! |
+| payment_reminder | Payment Due | Pay your share of ₹[Amount] for [Trip] |
+| safety_alert | Safety Alert | [User] activated emergency alert |
+
+---
+
+### 8.3 Get Notifications
+**Description:** Fetch user's notifications  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Fetch notifications where `userId = userId`
+- Filter by:
+  - Unread only (optional)
+  - Type (optional)
+  - Date range
+- Sort by `createdAt DESC`
+- Pagination (20 per page)
+- Return notifications array
+
+---
+
+### 8.4 Mark Notification as Read
+**Description:** Mark notification read  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Update `isRead = true`
+- Can mark single or bulk (array of IDs)
+- Return success count
+
+---
+
+### 8.5 Mark All as Read
+**Description:** Clear all unread notifications  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Update all notifications where `userId = userId` and `isRead = false`
+- Set `isRead = true`
+- Return count updated
+
+---
+
+### 8.6 Get Unread Count
+**Description:** Get badge count  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Count notifications where:
+  - `userId = userId`
+  - `isRead = false`
+- Return count
+
+**Used For:**
+- App badge
+- Notification bell icon
+
+---
+
+### 8.7 Delete Notification
+**Description:** Remove notification  
+**Tables Used:** `notifications`  
+**Functionality:**
+- Soft delete or hard delete (configurable)
+- Verify ownership
+- Return success
+
+---
+
+### 8.8 Notification Preferences
+**Description:** Manage notification settings  
+**Tables Used:** `users` (add `notificationPreferences` JSONB column)  
+**Functionality:**
+- Store preferences:
+  - `pushEnabled`: boolean
+  - `emailEnabled`: boolean
+  - `smsEnabled`: boolean
+  - Per-type toggles (swipe, match, chat, etc.)
+- Update preferences
+- Return updated settings
+
+**Default Preferences:**
+- Push: all enabled
+- Email: important only (match, trip update)
+- SMS: emergency only
+
+---
+
+### 8.9 Schedule Notification (Workers)
+**Description:** Background job for scheduled notifications  
+**External:** Bull Queue (Redis-backed)  
+**Functionality:**
+- Review reminders: 12h after trip completion
+- Payment reminders: 24h before departure
+- Departure reminders: 2h before departure
+- Abandoned cart: User created trip but didn't complete
+- Re-engagement: No activity in 7 days
+
+**Worker Implementation:**
+- Bull queue with Redis
+- Cron patterns for recurring jobs
+- Retry logic with exponential backoff
+
+---
+
+## 9. Analytics & Recommendations
+
+### 9.1 Track Event
+**Description:** Log user actions for analytics  
+**Tables Used:** `analytics_events`  
+**Functionality:**
+- Create event record with:
+  - `userId`
+  - `eventType` (trip_viewed, search_performed, swipe_right, etc.)
+  - `eventData` (JSONB with context)
+  - Session ID
+  - IP address, user agent
+- Async insert (don't block request)
+- Return success
+
+**Common Events:**
+- trip_viewed
+- search_performed
+- swipe_right, swipe_left
+- match_accepted
+- chat_opened
+- profile_updated
+- trip_created
+
+---
+
+### 9.2 Get Trending Routes
+**Description:** Popular origin-destination pairs  
+**Tables Used:** `trips`, `analytics_events`  
+**Functionality:**
+- Aggregate trips by (originCity, destinationCity)
+- Count trips in last 30 days
+- Calculate growth rate vs previous 30 days
+- Filter by user's college
+- Return top 10 routes with:
+  - Route name
+  - Trip count
+  - Growth percentage
+  - Average fare
+  - Next available trip
+
+---
+
+### 9.3 Suggest Trips
+**Description:** Personalized trip recommendations  
+**Tables Used:** `trips`, `users`, `user_interests`, `analytics_events`, `matches`  
+**Functionality:**
+- Based on:
+  - User's past trips (similar routes)
+  - Department/year matching
+  - Shared interests with creator
+  - Search history
+  - Popular routes in college
+- Score each trip with algorithm:
+```
+  score = (
+    pastRouteSimilarity * 0.3 +
+    trustScoreMatch * 0.25 +
+    interestMatch * 0.2 +
+    departmentMatch * 0.15 +
+    searchHistoryMatch * 0.1
+  )
+```
+- Return top 10 suggested trips
+- Diversity: ensure not all same destination
+
+---
+
+### 9.4 User Matching Score
+**Description:** Calculate compatibility between users  
+**Tables Used:** `users`, `user_interests`  
+**Functionality:**
+- Compare two users:
+  - Common interests count
+  - Department/year match
+  - Trust score similarity
+  - Gender preference compatibility
+- Calculate match percentage (0-100%)
+- Return score with breakdown
+
+**Used For:**
+- Swipe suggestions
+- Participant recommendations
+- "You might also like" feature
+
+---
+
+### 9.5 Platform Analytics (Admin)
+**Description:** Overall platform metrics  
+**Tables Used:** All tables  
+**Functionality:**
+- Dashboard with:
+  - Total users (active/inactive)
+  - Total trips (by status)
+  - Total matches
+  - Average trust score
+  - Trip completion rate
+  - User retention (DAU/MAU)
+  - Top colleges by activity
+  - Revenue metrics (if applicable)
+- Time-series data (daily/weekly/monthly)
+- Export to CSV
+- Return analytics object
+
+---
+
+### 9.6 College Leaderboard
+**Description:** Rank colleges by activity  
+**Tables Used:** `users`, `trips`, `reviews`  
+**Functionality:**
+- Group by `collegeDomain`
+- Calculate per college:
+  - Total active users
+  - Total trips created
+  - Average trust score
+  - Total trips completed
+  - Review participation rate
+- Rank by composite score
+- Return top 20 colleges
+
+**Composite Score:**
+```
+score = (
+  activeUsers * 10 +
+  tripsCompleted * 5 +
+  avgTrustScore * 20 +
+  reviewRate * 15
+)
+
+9.7 User Behavior Insights
+Description: Individual user analytics
+Tables Used: analytics_events, trips, swipes, matches
+Functionality:
+
+For user, calculate:
+
+Most searched routes
+Swipe patterns (acceptance rate)
+Average response time
+Preferred trip types
+Peak activity times
+Most common travel companions
+
+
+Return insights object
+
+Used For:
+
+Personalization
+Better recommendations
+UX improvements
+
+
+10. Admin & Moderation
+10.1 Admin Dashboard
+Description: Centralized admin panel
+Access: Admin role only
+Functionality:
+
+Real-time stats overview
+Pending reports queue
+Flagged content
+User growth charts
+Revenue tracking
+System health metrics
+
+
+10.2 Moderate User
+Description: Review and action on user accounts
+Tables Used: users, safety_reports
+Functionality:
+
+View user full profile including:
+
+All trips (created/joined)
+All reviews (given/received)
+Reports submitted
+Reports against user
+Activity timeline
+
+
+Take actions:
+
+Warn user
+Suspend (7/30/90 days)
+Ban permanently
+Verify manually
+Reset trust score
+
+
+Add admin notes
+Send notification to user
+Return updated user status
+
+
+10.3 Review Safety Reports
+Description: Process moderation queue
+Tables Used: safety_reports, users, trips, chat_messages
+Functionality:
+
+Fetch pending reports
+Sort by priority (emergency first)
+View full context:
+
+Report details
+Reported user/trip/message
+Reporter history
+Evidence attachments
+
+
+Take action
+Update report status
+Notify relevant parties
+Return next report in queue
+
+
+10.4 Bulk Actions
+Description: Batch operations for efficiency
+Functionality:
+
+Approve/reject multiple reports
+Ban multiple users (spam accounts)
+Delete multiple trips
+Send bulk notifications
+Export data for analysis
+
+
+10.5 Content Moderation
+Description: Review flagged messages/reviews
+Tables Used: chat_messages, reviews
+Functionality:
+
+View flagged content
+Context (trip, participants, timestamps)
+Approve or remove content
+Warn or ban users involved
+Update moderation logs
+
+
+10.6 System Logs
+Description: Audit trail
+Functionality:
+
+Log all admin actions
+Track changes to user accounts
+Monitor suspicious activities
+Export logs for compliance
+
+
+10.7 Whitelist Management
+Description: Manage approved college domains
+Functionality:
+
+Add/remove college domains
+Bulk import from CSV
+Set verification requirements per college
+Return active whitelist
