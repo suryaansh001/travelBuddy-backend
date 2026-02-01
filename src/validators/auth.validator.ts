@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-// Approved college domains
+// Approved college domains - JKLU is the primary supported domain
 export const APPROVED_DOMAINS = [
+  'jklu.edu.in', // JK Lakshmipat University - Primary
   'iitd.ac.in', 'iitb.ac.in', 'iitm.ac.in', 'iitk.ac.in', 'iitr.ac.in',
   'iitg.ac.in', 'iith.ac.in', 'iitp.ac.in', 'iitism.ac.in', 'iitbbs.ac.in',
   'iiitd.ac.in', 'iiith.ac.in', 'iiitb.ac.in', 'nsut.ac.in', 'dtu.ac.in',

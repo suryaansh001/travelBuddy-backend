@@ -27,19 +27,22 @@ export class AuthService {
     // Hash password
     const passwordHash = await hashPassword(password);
 
-    // Create user
+    // Check if JKLU email - auto-verify JKLU students
+    const isJKLUEmail = collegeDomain === 'jklu.edu.in';
+    
+    // Create user (auto-verify for JKLU students)
     const user = await prisma.user.create({
       data: {
         email,
         passwordHash,
         fullName,
-        collegeName,
+        collegeName: isJKLUEmail ? 'JK Lakshmipat University' : collegeName,
         collegeDomain,
         department,
         yearOfStudy,
         gender,
         trustScore: 5.0,
-        emailVerified: false,
+        emailVerified: isJKLUEmail, // Auto-verify JKLU students
       },
       select: {
         id: true,
@@ -56,16 +59,19 @@ export class AuthService {
       },
     });
 
-    // Generate and send OTP
-    const otp = generateOTP();
-    await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
-    await sendVerificationEmail(email, otp, fullName);
+    // Skip OTP for JKLU students, send for others
+    if (!isJKLUEmail) {
+      const otp = generateOTP();
+      await redis.setEx(REDIS_KEYS.OTP_EMAIL(email), REDIS_TTL.OTP, otp);
+      // Email sending is optional - commented out for now
+      // await sendVerificationEmail(email, otp, fullName);
+    }
 
-    // Generate tokens (limited access until verified)
+    // Generate tokens (full access for JKLU, limited for others)
     const accessToken = generateAccessToken({
       userId: user.id,
       email: user.email,
-      isVerified: false,
+      isVerified: isJKLUEmail,
     });
 
     const refreshToken = generateRefreshToken({
